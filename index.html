@@ -38,6 +38,7 @@
         .menu-header { width: 100%; font-size: 12px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.4px; text-align: left; margin-bottom: 4px; }
         .match-box { width: 100%; background: #ecfdf5; border: 1px solid #10b981; border-radius: 8px; padding: 10px; margin-top: 6px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; text-align: left; }
         .match-box.secondary { background: #f8fafc; border-color: #cbd5e1; }
+        .match-box.broad { background: #fffbeb; border-color: #f59e0b; }
         .match-price { font-size: 22px; color: #059669; font-weight: 800; white-space: nowrap; margin-left: 8px; }
         
         .item-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; text-align: left; }
@@ -290,9 +291,9 @@
                 const livePhoto = captureFastPhoto();
 
                 const parts = [
-                    { text: "TARGET PHOTO TO IDENTIFY (pay close attention to relative width/size compared to any coin, ruler, or background texture):" },
+                    { text: "TARGET PHOTO TO IDENTIFY (use a broad, forgiving similarity threshold: allow differences in angle, lighting, distance, focus, or background clutter):" },
                     { inline_data: { mime_type: "image/jpeg", data: livePhoto.base64 } },
-                    { text: "Compare the TARGET PHOTO above against these saved store catalog items. Return the best match AND up to 2 similar size/variant matches if multiple sizes exist:" }
+                    { text: "Compare the TARGET PHOTO against these saved store catalog items using a broad similarity threshold. Include up to 3 closest or loosely similar items (such as similar materials, colors, shapes, or sizes) rather than rejecting items for minor visual differences:" }
                 ];
 
                 const itemsToCompare = inventory.slice(0, 40);
@@ -302,7 +303,7 @@
                 });
 
                 parts.push({
-                    text: `\nRespond ONLY with valid JSON (no markdown): {"matches": [{"id": number, "reason": "short 4-word note"}], "confidence": "high" | "medium" | "low"}`
+                    text: `\nRespond ONLY with valid JSON (no markdown): {"matches": [{"id": number, "reason": "short 4-word note"}], "broadMatch": true}`
                 });
 
                 const rawReply = await callGeminiWithParts(parts);
@@ -311,22 +312,27 @@
 
                 const validMatches = (parsed.matches || [])
                     .map(m => ({ item: inventory.find(i => i.id === m.id), reason: m.reason }))
-                    .filter(m => m.item);
+                    .filter(m => m.item)
+                    .slice(0, 3);
 
-                if (validMatches.length > 0 && parsed.confidence !== "low") {
-                    const header = `<div class="menu-header">Price Matches (${validMatches.length})</div>`;
-                    const cards = validMatches.map((m, idx) => `
-                        <div class="match-box ${idx > 0 ? 'secondary' : ''}">
-                            <div>
-                                <div style="font-size:15px; font-weight:bold;">${idx === 0 ? '✅ ' : ''}${m.item.name}</div>
-                                <div style="font-size:12px; color:#555; font-weight:normal;">${m.reason}</div>
+                if (validMatches.length > 0) {
+                    const header = `<div class="menu-header">Broad Similarity Matches (${validMatches.length})</div>`;
+                    const cards = validMatches.map((m, idx) => {
+                        const boxClass = idx === 0 ? '' : (parsed.broadMatch ? 'broad' : 'secondary');
+                        const prefix = idx === 0 ? '✅ ' : '≈ ';
+                        return `
+                            <div class="match-box ${boxClass}">
+                                <div>
+                                    <div style="font-size:15px; font-weight:bold;">${prefix}${m.item.name}</div>
+                                    <div style="font-size:12px; color:#555; font-weight:normal;">${m.reason || 'Similar visual match'}</div>
+                                </div>
+                                <div class="match-price">₱${m.item.price}</div>
                             </div>
-                            <div class="match-price">₱${m.item.price}</div>
-                        </div>
-                    `).join('');
+                        `;
+                    }).join('');
                     setResult(header + cards);
                 } else {
-                    setResult(`❓ Not recognized.<br><span style="font-size:13px; color:#666; font-weight:normal;">Get closer or save it below.</span>`);
+                    setResult(`❓ No similar item found.<br><span style="font-size:13px; color:#666; font-weight:normal;">Save it above or search below.</span>`);
                 }
             } catch (err) {
                 setResult(`❌ ${err.message}`);
