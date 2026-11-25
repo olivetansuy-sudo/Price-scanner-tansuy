@@ -9,23 +9,30 @@
         h2 { margin: 0 0 10px 0; font-size: 20px; }
         .card { background: white; padding: 14px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); max-width: 420px; margin: 0 auto 12px auto; }
         #camera-container { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
-        video { width: 100%; display: block; max-height: 260px; object-fit: cover; }
+        video { width: 100%; height: auto; max-height: 340px; display: block; object-fit: contain; }
+        .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 110px; height: 110px; border: 2px dashed rgba(255,255,255,0.65); border-radius: 50%; pointer-events: none; }
         canvas { display: none; }
-        input { width: 100%; box-sizing: border-box; padding: 11px; font-size: 16px; border: 1px solid #ccd0d5; border-radius: 8px; margin-bottom: 8px; }
+        .zoom-bar { display: none; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: #4b5563; }
+        .zoom-bar input[type="range"] { flex: 1; margin: 0; padding: 0; }
+        input[type="text"], input[type="number"], input[type="password"] { width: 100%; box-sizing: border-box; padding: 11px; font-size: 16px; border: 1px solid #ccd0d5; border-radius: 8px; margin-bottom: 8px; }
         button { width: 100%; padding: 13px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; color: white; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-scan { background: #10b981; font-size: 18px; }
         .btn-add { background: #2563eb; }
         .btn-key { background: #4b5563; padding: 10px; font-size: 14px; }
         .btn-backup { background: #6b7280; padding: 8px; font-size: 13px; width: 48%; display: inline-block; }
-        #result { font-size: 17px; font-weight: 600; min-height: 28px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .price-tag { font-size: 28px; color: #10b981; font-weight: 800; margin-top: 2px; }
+        #result { font-size: 16px; font-weight: 600; min-height: 28px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .menu-header { width: 100%; font-size: 12px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.4px; text-align: left; margin-bottom: 4px; }
+        .match-box { width: 100%; background: #ecfdf5; border: 1px solid #10b981; border-radius: 8px; padding: 10px; margin-top: 6px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; text-align: left; }
+        .match-box.secondary { background: #f8fafc; border-color: #cbd5e1; }
+        .match-price { font-size: 22px; color: #059669; font-weight: 800; white-space: nowrap; margin-left: 8px; }
         .item-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; text-align: left; }
         .item-row:last-child { border-bottom: none; }
         .item-row img { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; margin-right: 10px; }
         .btn-del { background: #ef4444; width: auto; padding: 6px 10px; font-size: 12px; }
         details { text-align: left; font-size: 14px; color: #4b5563; }
         summary { font-weight: bold; cursor: pointer; }
+        .tip-banner { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; font-size: 12px; padding: 8px; border-radius: 8px; margin-bottom: 10px; text-align: left; }
     </style>
 </head>
 <body>
@@ -44,11 +51,22 @@
 
     <!-- Camera & Scan -->
     <div class="card">
+        <div class="tip-banner">
+            💡 <b>Size Tip (Buttons & Garters):</b> Keep a <b>₱1 coin</b> or small ruler taped to your counter next to the item so the AI can judge width & size!
+        </div>
+
         <div id="camera-container">
             <video id="video" autoplay playsinline></video>
+            <div class="guide-overlay"></div>
+        </div>
+        <div id="zoomBar" class="zoom-bar">
+            <span>🔍 Zoom:</span>
+            <input type="range" id="zoomSlider" step="0.1">
+            <span id="zoomVal">1.0x</span>
         </div>
         <canvas id="canvas"></canvas>
         
+        <!-- Multi-Match Price Menu appears here -->
         <div id="result" style="margin: 12px 0;">Point camera at an item</div>
         <button id="scanBtn" class="btn-scan" onclick="scanItem()">🔍 Scan & Check Price</button>
     </div>
@@ -56,14 +74,15 @@
     <!-- Instant Add New Item -->
     <div class="card">
         <h3 style="margin:0 0 8px 0; font-size:15px; text-align:left;">⚡ Instant Add Material</h3>
-        <input type="text" id="itemName" placeholder="Material Name (e.g., 1/2 PVC Elbow)">
-        <input type="number" id="itemPrice" placeholder="Price (e.g., 25.00)" step="0.01">
+        <input type="text" id="itemName" placeholder="Name & Size (e.g., 1/2 inch Garter / yard)">
+        <input type="number" id="itemPrice" placeholder="Price (e.g., 12.00)" step="0.01">
         <button id="addBtn" class="btn-add" onclick="saveItem()">📸 Snap & Save Instantly</button>
     </div>
 
-    <!-- Saved Inventory -->
+    <!-- Saved Inventory + Quick Search -->
     <div class="card">
         <h3 style="margin:0 0 8px 0; font-size:15px; text-align:left;">Saved Materials (<span id="count">0</span>)</h3>
+        <input type="text" id="searchInput" placeholder="🔎 Quick Search (type name or size, e.g. garter)..." oninput="renderInventory()">
         <div id="items"></div>
         <div style="margin-top:12px; display:flex; justify-content:space-between;">
             <button class="btn-backup" onclick="exportData()">⬇️ Backup List</button>
@@ -91,9 +110,38 @@
             document.getElementById('apiKeyInput').value = apiKey;
         }
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-            .then(stream => { video.srcObject = stream; })
-            .catch(() => { setResult("⚠️ Camera blocked. Allow camera permissions."); });
+        navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'environment',
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        })
+        .then(stream => {
+            video.srcObject = stream;
+            const track = stream.getVideoTracks()[0];
+            const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+
+            if (capabilities.zoom) {
+                const minZoom = capabilities.zoom.min || 1;
+                const maxZoom = Math.min(capabilities.zoom.max || 4, 4);
+                track.applyConstraints({ advanced: [{ zoom: minZoom }] }).catch(() => {});
+
+                const slider = document.getElementById('zoomSlider');
+                slider.min = minZoom;
+                slider.max = maxZoom;
+                slider.value = minZoom;
+                document.getElementById('zoomVal').innerText = minZoom.toFixed(1) + 'x';
+                document.getElementById('zoomBar').style.display = 'flex';
+
+                slider.oninput = () => {
+                    const z = parseFloat(slider.value);
+                    document.getElementById('zoomVal').innerText = z.toFixed(1) + 'x';
+                    track.applyConstraints({ advanced: [{ zoom: z }] }).catch(() => {});
+                };
+            }
+        })
+        .catch(() => { setResult("⚠️ Camera blocked. Allow camera permissions."); });
 
         function saveApiKey() {
             const val = document.getElementById('apiKeyInput').value.trim();
@@ -108,7 +156,6 @@
             document.getElementById('result').innerHTML = html;
         }
 
-        // Fast, lightweight photo capture (320px) for instant saving & rapid AI upload
         function captureFastPhoto() {
             const size = 320;
             const aspect = (video.videoHeight / video.videoWidth) || 1;
@@ -122,7 +169,6 @@
             };
         }
 
-        // 0-second instant save (no internet wait)
         function saveItem() {
             const name = document.getElementById('itemName').value.trim();
             const price = document.getElementById('itemPrice').value.trim();
@@ -208,14 +254,12 @@
             try {
                 const livePhoto = captureFastPhoto();
 
-                // Build visual comparison prompt with live photo + reference catalog photos
                 const parts = [
-                    { text: "TARGET PHOTO TO IDENTIFY:" },
+                    { text: "TARGET PHOTO TO IDENTIFY (pay close attention to relative width/size compared to any coin, ruler, or background texture):" },
                     { inline_data: { mime_type: "image/jpeg", data: livePhoto.base64 } },
-                    { text: "Compare the TARGET PHOTO above against these saved store catalog items and find the exact match:" }
+                    { text: "Compare the TARGET PHOTO above against these saved store catalog items. Return the best match AND up to 2 similar size/variant matches if multiple sizes exist:" }
                 ];
 
-                // Send up to 40 most recent items visually for fast matching
                 const itemsToCompare = inventory.slice(0, 40);
                 itemsToCompare.forEach(item => {
                     parts.push({ text: `\nItem ID: ${item.id} | Name: ${item.name}` });
@@ -223,20 +267,29 @@
                 });
 
                 parts.push({
-                    text: `\nRespond ONLY with valid JSON (no markdown): {"matchedId": number_or_null, "confidence": "high" | "medium" | "low", "reason": "4-word reason"}`
+                    text: `\nRespond ONLY with valid JSON (no markdown): {"matches": [{"id": number, "reason": "short 4-word note"}], "confidence": "high" | "medium" | "low"}`
                 });
 
                 const rawReply = await callGeminiWithParts(parts);
                 const cleanJson = rawReply.replace(/```json|```/g, '').trim();
-                const match = JSON.parse(cleanJson);
-                const found = inventory.find(i => i.id === match.matchedId);
+                const parsed = JSON.parse(cleanJson);
 
-                if (found && match.confidence !== "low") {
-                    setResult(`
-                        <span>${found.name}</span>
-                        <span class="price-tag">₱${found.price}</span>
-                        <span style="font-size:12px; color:#666; font-weight:normal;">(${match.reason})</span>
-                    `);
+                const validMatches = (parsed.matches || [])
+                    .map(m => ({ item: inventory.find(i => i.id === m.id), reason: m.reason }))
+                    .filter(m => m.item);
+
+                if (validMatches.length > 0 && parsed.confidence !== "low") {
+                    const header = `<div class="menu-header">Price Matches (${validMatches.length})</div>`;
+                    const cards = validMatches.map((m, idx) => `
+                        <div class="match-box ${idx > 0 ? 'secondary' : ''}">
+                            <div>
+                                <div style="font-size:15px; font-weight:bold;">${idx === 0 ? '✅ ' : ''}${m.item.name}</div>
+                                <div style="font-size:12px; color:#555; font-weight:normal;">${m.reason}</div>
+                            </div>
+                            <div class="match-price">₱${m.item.price}</div>
+                        </div>
+                    `).join('');
+                    setResult(header + cards);
                 } else {
                     setResult(`❓ Not recognized.<br><span style="font-size:13px; color:#666; font-weight:normal;">Get closer or save it below.</span>`);
                 }
@@ -255,19 +308,24 @@
         }
 
         function renderInventory() {
-            document.getElementById('count').innerText = inventory.length;
-            document.getElementById('items').innerHTML = inventory.map(item => `
-                <div class="item-row">
-                    <div style="display:flex; align-items:center;">
-                        <img src="${item.dataUrl}">
-                        <div>
-                            <b>${item.name}</b><br>
-                            <span style="color:#10b981; font-weight:bold;">₱${item.price}</span>
+            const query = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
+            const filtered = query ? inventory.filter(i => i.name.toLowerCase().includes(query)) : inventory;
+
+            document.getElementById('count').innerText = query ? `${filtered.length} / ${inventory.length}` : inventory.length;
+            document.getElementById('items').innerHTML = filtered.length
+                ? filtered.map(item => `
+                    <div class="item-row">
+                        <div style="display:flex; align-items:center;">
+                            <img src="${item.dataUrl}">
+                            <div>
+                                <b>${item.name}</b><br>
+                                <span style="color:#10b981; font-weight:bold;">₱${item.price}</span>
+                            </div>
                         </div>
+                        <button class="btn-del" onclick="deleteItem(${item.id})">✕</button>
                     </div>
-                    <button class="btn-del" onclick="deleteItem(${item.id})">✕</button>
-                </div>
-            `).join('');
+                `).join('')
+                : `<p style="font-size:13px; color:#6b7280; margin:8px 0;">No matching materials found.</p>`;
         }
 
         function exportData() {
