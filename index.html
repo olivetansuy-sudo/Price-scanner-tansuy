@@ -8,12 +8,14 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 12px; background: #f0f2f5; text-align: center; color: #1c1e21; }
         h2 { margin: 0 0 10px 0; font-size: 20px; }
         .card { background: white; padding: 14px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); max-width: 420px; margin: 0 auto 12px auto; }
-        #camera-container { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
+        #camera-container { position: relative; width: 100%; min-height: 220px; border-radius: 10px; overflow: hidden; background: #111; display: flex; align-items: center; justify-content: center; }
         video { width: 100%; height: auto; max-height: 340px; display: block; object-fit: contain; }
         .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 110px; height: 110px; border: 2px dashed rgba(255,255,255,0.65); border-radius: 50%; pointer-events: none; }
         canvas { display: none; }
-        .zoom-bar { display: none; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: #4b5563; }
-        .zoom-bar input[type="range"] { flex: 1; margin: 0; padding: 0; }
+        .cam-controls { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: #4b5563; }
+        .zoom-wrap { display: none; align-items: center; gap: 6px; flex: 1; }
+        .zoom-wrap input[type="range"] { flex: 1; margin: 0; padding: 0; }
+        .btn-cam-reset { background: #e5e7eb; color: #1f2937; width: auto; padding: 6px 10px; font-size: 12px; border-radius: 6px; }
         input[type="text"], input[type="number"], input[type="password"] { width: 100%; box-sizing: border-box; padding: 11px; font-size: 16px; border: 1px solid #ccd0d5; border-radius: 8px; margin-bottom: 8px; }
         button { width: 100%; padding: 13px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; color: white; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -56,17 +58,19 @@
         </div>
 
         <div id="camera-container">
-            <video id="video" autoplay playsinline></video>
+            <video id="video" autoplay playsinline muted></video>
             <div class="guide-overlay"></div>
         </div>
-        <div id="zoomBar" class="zoom-bar">
-            <span>🔍 Zoom:</span>
-            <input type="range" id="zoomSlider" step="0.1">
-            <span id="zoomVal">1.0x</span>
+        <div class="cam-controls">
+            <div id="zoomWrap" class="zoom-wrap">
+                <span>🔍</span>
+                <input type="range" id="zoomSlider" step="0.1">
+                <span id="zoomVal">1.0x</span>
+            </div>
+            <button type="button" class="btn-cam-reset" onclick="startCamera()">🔄 Restart Camera</button>
         </div>
         <canvas id="canvas"></canvas>
         
-        <!-- Multi-Match Price Menu appears here -->
         <div id="result" style="margin: 12px 0;">Point camera at an item</div>
         <button id="scanBtn" class="btn-scan" onclick="scanItem()">🔍 Scan & Check Price</button>
     </div>
@@ -103,6 +107,7 @@
         
         let inventory = JSON.parse(localStorage.getItem('aiStoreInventoryV2')) || [];
         let apiKey = localStorage.getItem('geminiApiKey') || '';
+        let currentStream = null;
 
         if (!apiKey) {
             document.getElementById('keyBox').open = true;
@@ -110,38 +115,55 @@
             document.getElementById('apiKeyInput').value = apiKey;
         }
 
-        navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: 'environment',
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
+        async function startCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(t => t.stop());
             }
-        })
-        .then(stream => {
-            video.srcObject = stream;
-            const track = stream.getVideoTracks()[0];
-            const capabilities = track.getCapabilities ? track.getCapabilities() : {};
 
-            if (capabilities.zoom) {
-                const minZoom = capabilities.zoom.min || 1;
-                const maxZoom = Math.min(capabilities.zoom.max || 4, 4);
-                track.applyConstraints({ advanced: [{ zoom: minZoom }] }).catch(() => {});
+            try {
+                // Use simple universal rear-camera request with fallback to any camera
+                let stream;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment' },
+                        audio: false
+                    });
+                } catch (e) {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+                }
 
-                const slider = document.getElementById('zoomSlider');
-                slider.min = minZoom;
-                slider.max = maxZoom;
-                slider.value = minZoom;
-                document.getElementById('zoomVal').innerText = minZoom.toFixed(1) + 'x';
-                document.getElementById('zoomBar').style.display = 'flex';
+                currentStream = stream;
+                video.srcObject = stream;
+                await video.play().catch(() => {});
 
-                slider.oninput = () => {
-                    const z = parseFloat(slider.value);
-                    document.getElementById('zoomVal').innerText = z.toFixed(1) + 'x';
-                    track.applyConstraints({ advanced: [{ zoom: z }] }).catch(() => {});
-                };
+                const track = stream.getVideoTracks()[0];
+                const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+
+                if (capabilities.zoom) {
+                    const minZoom = capabilities.zoom.min || 1;
+                    const maxZoom = Math.min(capabilities.zoom.max || 4, 4);
+                    const slider = document.getElementById('zoomSlider');
+                    slider.min = minZoom;
+                    slider.max = maxZoom;
+                    slider.value = minZoom;
+                    document.getElementById('zoomVal').innerText = minZoom.toFixed(1) + 'x';
+                    document.getElementById('zoomWrap').style.display = 'flex';
+
+                    slider.oninput = () => {
+                        const z = parseFloat(slider.value);
+                        document.getElementById('zoomVal').innerText = z.toFixed(1) + 'x';
+                        track.applyConstraints({ advanced: [{ zoom: z }] }).catch(() => {});
+                    };
+                }
+            } catch (err) {
+                setResult(`⚠️ Camera error (${err.name}). Tap the lock/settings icon in Chrome's address bar and allow Camera.`);
             }
-        })
-        .catch(() => { setResult("⚠️ Camera blocked. Allow camera permissions."); });
+        }
+
+        startCamera();
 
         function saveApiKey() {
             const val = document.getElementById('apiKeyInput').value.trim();
