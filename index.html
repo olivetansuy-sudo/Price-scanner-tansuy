@@ -5,36 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI Store Price Scanner</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 12px; background: #f0f2f5; text-align: center; color: #1c1e21; }
-        h2 { margin: 0 0 10px 0; font-size: 20px; }
-        .card { background: white; padding: 14px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); max-width: 420px; margin: 0 auto 12px auto; }
-        #camera-container { position: relative; width: 100%; min-height: 220px; border-radius: 10px; overflow: hidden; background: #111; display: flex; align-items: center; justify-content: center; }
-        video { width: 100%; height: auto; max-height: 340px; display: block; object-fit: contain; }
-        .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 110px; height: 110px; border: 2px dashed rgba(255,255,255,0.65); border-radius: 50%; pointer-events: none; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 10px; background: #f0f2f5; text-align: center; color: #1c1e21; }
+        h2 { margin: 0 0 8px 0; font-size: 19px; }
+        .card { background: white; padding: 12px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); max-width: 420px; margin: 0 auto 10px auto; }
+        
+        /* Camera & Floating Overlay Controls */
+        #camera-container { position: relative; width: 100%; min-height: 320px; border-radius: 10px; overflow: hidden; background: #111; display: flex; align-items: center; justify-content: center; }
+        video { width: 100%; height: auto; max-height: 400px; display: block; object-fit: contain; }
+        .guide-overlay { position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%); width: 105px; height: 105px; border: 2px dashed rgba(255,255,255,0.65); border-radius: 50%; pointer-events: none; }
+        
+        .cam-overlay-panel { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.85) 25%); padding: 18px 8px 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+        .overlay-row { display: flex; gap: 6px; }
+        .overlay-row input { margin-bottom: 0; padding: 9px; font-size: 14px; background: rgba(255,255,255,0.95); border: none; border-radius: 7px; }
+        .overlay-row input#itemName { flex: 2; }
+        .overlay-row input#itemPrice { flex: 1; }
+        .btn-overlay-save { background: #2563eb; color: white; padding: 10px; font-size: 14px; border-radius: 7px; }
+
         canvas { display: none; }
         .cam-controls { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: #4b5563; }
         .zoom-wrap { display: none; align-items: center; gap: 6px; flex: 1; }
         .zoom-wrap input[type="range"] { flex: 1; margin: 0; padding: 0; }
         .btn-cam-reset { background: #e5e7eb; color: #1f2937; width: auto; padding: 6px 10px; font-size: 12px; border-radius: 6px; }
-        input[type="text"], input[type="number"], input[type="password"] { width: 100%; box-sizing: border-box; padding: 11px; font-size: 16px; border: 1px solid #ccd0d5; border-radius: 8px; margin-bottom: 8px; }
+        
+        input[type="text"], input[type="number"], input[type="password"] { width: 100%; box-sizing: border-box; padding: 10px; font-size: 15px; border: 1px solid #ccd0d5; border-radius: 8px; margin-bottom: 8px; }
         button { width: 100%; padding: 13px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; color: white; }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-scan { background: #10b981; font-size: 18px; }
-        .btn-add { background: #2563eb; }
         .btn-key { background: #4b5563; padding: 10px; font-size: 14px; }
         .btn-backup { background: #6b7280; padding: 8px; font-size: 13px; width: 48%; display: inline-block; }
-        #result { font-size: 16px; font-weight: 600; min-height: 28px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        #result { font-size: 16px; font-weight: 600; min-height: 26px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .menu-header { width: 100%; font-size: 12px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.4px; text-align: left; margin-bottom: 4px; }
         .match-box { width: 100%; background: #ecfdf5; border: 1px solid #10b981; border-radius: 8px; padding: 10px; margin-top: 6px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; text-align: left; }
         .match-box.secondary { background: #f8fafc; border-color: #cbd5e1; }
         .match-price { font-size: 22px; color: #059669; font-weight: 800; white-space: nowrap; margin-left: 8px; }
+        
         .item-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; text-align: left; }
         .item-row:last-child { border-bottom: none; }
         .item-row img { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; margin-right: 10px; }
         .btn-del { background: #ef4444; width: auto; padding: 6px 10px; font-size: 12px; }
         details { text-align: left; font-size: 14px; color: #4b5563; }
         summary { font-weight: bold; cursor: pointer; }
-        .tip-banner { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; font-size: 12px; padding: 8px; border-radius: 8px; margin-bottom: 10px; text-align: left; }
+        .tip-banner { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; font-size: 12px; padding: 7px; border-radius: 8px; margin-bottom: 8px; text-align: left; }
     </style>
 </head>
 <body>
@@ -51,16 +63,26 @@
         </details>
     </div>
 
-    <!-- Camera & Scan -->
+    <!-- Camera, Overlaid Save & Scan -->
     <div class="card">
         <div class="tip-banner">
-            💡 <b>Size Tip (Buttons & Garters):</b> Keep a <b>₱1 coin</b> or small ruler taped to your counter next to the item so the AI can judge width & size!
+            💡 <b>Size Tip:</b> Place a <b>₱1 coin</b> or ruler next to buttons/garters so the AI can compare sizes.
         </div>
 
         <div id="camera-container">
             <video id="video" autoplay playsinline muted></video>
             <div class="guide-overlay"></div>
+            
+            <!-- Overlaid Instant Add Bar -->
+            <div class="cam-overlay-panel">
+                <div class="overlay-row">
+                    <input type="text" id="itemName" placeholder="Name & Size (e.g. 1/2 Garter)">
+                    <input type="number" id="itemPrice" placeholder="₱ Price" step="0.01">
+                </div>
+                <button id="addBtn" class="btn-overlay-save" onclick="saveItem()">📸 Snap & Save Instantly</button>
+            </div>
         </div>
+
         <div class="cam-controls">
             <div id="zoomWrap" class="zoom-wrap">
                 <span>🔍</span>
@@ -71,22 +93,14 @@
         </div>
         <canvas id="canvas"></canvas>
         
-        <div id="result" style="margin: 12px 0;">Point camera at an item</div>
+        <div id="result" style="margin: 10px 0;">Point camera at an item</div>
         <button id="scanBtn" class="btn-scan" onclick="scanItem()">🔍 Scan & Check Price</button>
-    </div>
-
-    <!-- Instant Add New Item -->
-    <div class="card">
-        <h3 style="margin:0 0 8px 0; font-size:15px; text-align:left;">⚡ Instant Add Material</h3>
-        <input type="text" id="itemName" placeholder="Name & Size (e.g., 1/2 inch Garter / yard)">
-        <input type="number" id="itemPrice" placeholder="Price (e.g., 12.00)" step="0.01">
-        <button id="addBtn" class="btn-add" onclick="saveItem()">📸 Snap & Save Instantly</button>
     </div>
 
     <!-- Saved Inventory + Quick Search -->
     <div class="card">
         <h3 style="margin:0 0 8px 0; font-size:15px; text-align:left;">Saved Materials (<span id="count">0</span>)</h3>
-        <input type="text" id="searchInput" placeholder="🔎 Quick Search (type name or size, e.g. garter)..." oninput="renderInventory()">
+        <input type="text" id="searchInput" placeholder="🔎 Quick Search (e.g. garter, button)..." oninput="renderInventory()">
         <div id="items"></div>
         <div style="margin-top:12px; display:flex; justify-content:space-between;">
             <button class="btn-backup" onclick="exportData()">⬇️ Backup List</button>
@@ -121,7 +135,6 @@
             }
 
             try {
-                // Use simple universal rear-camera request with fallback to any camera
                 let stream;
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({
