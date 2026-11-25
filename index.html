@@ -68,7 +68,13 @@
     </div>
 
     <script>
-        const MODEL = "gemini-3.8-flash";
+        // Primary model + automatic fallback models if one experiences high demand
+        const MODELS = [
+            "gemini-3.8-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite"
+        ];
+        
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -109,7 +115,6 @@
             const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
             const base64 = dataUrl.split(',')[1];
             
-            // Small thumbnail for list display
             const thumbCanvas = document.createElement('canvas');
             thumbCanvas.width = 80;
             thumbCanvas.height = 80;
@@ -119,34 +124,67 @@
             return { base64, thumbnail };
         }
 
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
         async function callGemini(prompt, base64Image) {
             if (!apiKey) {
                 document.getElementById('keyBox').open = true;
                 throw new Error("Please enter your Gemini API Key at the top first.");
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-goog-api-key': apiKey
-                },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            { text: prompt },
-                            { inline_data: { mime_type: "image/jpeg", data: base64Image } }
-                        ]
-                    }]
-                })
-            });
+            let lastError = null;
 
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.error?.message || "API Error");
+            for (const model of MODELS) {
+                for (let attempt = 1; attempt <= 2; attempt++) {
+                    try {
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-goog-api-key': apiKey
+                            },
+                            body: JSON.stringify({
+                                contents: [{
+                                    parts: [
+                                        { text: prompt },
+                                        { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+                                    ]
+                                }]
+                            })
+                        });
+
+                        const data = await response.json();
+                        
+                        if (response.ok) {
+                            return data.candidates[0].content.parts[0].text;
+                        }
+
+                        lastError = data.error?.message || `Error ${response.status}`;
+
+                        // If model is busy (503) or rate-limited (429), wait 1.5s and retry or switch model
+                        if (response.status === 503 || response.status === 429) {
+                            setResult(`⏳ Server busy, switching backup AI...`);
+                            await sleep(1500);
+                            continue;
+                        }
+
+                        // If model name isn't available yet on this key (404), skip straight to next model
+                        if (response.status === 404) {
+                            break;
+                        }
+
+                        // If API key itself is invalid (400/403), stop immediately
+                        throw new Error(lastError);
+
+                    } catch (err) {
+                        lastError = err.message;
+                        if (lastError.includes("API key")) throw err;
+                    }
+                }
             }
-            return data.candidates[0].content.parts[0].text;
+
+            throw new Error(lastError || "All AI servers are temporarily busy. Try again in a moment.");
         }
 
         async function saveItem() {
@@ -178,7 +216,7 @@
                 setResult(`✅ Learned: <b>${name}</b> (₱${parseFloat(price).toFixed(2)})`);
                 renderInventory();
             } catch (err) {
-                setResult(`❌ Error: ${err.message}`);
+                setResult(`❌ ${err.message}`);
             } finally {
                 btn.disabled = false;
             }
@@ -213,7 +251,7 @@
                     setResult(`❓ Not recognized.<br><span style="font-size:13px; color:#666; font-weight:normal;">Try getting closer or add it below.</span>`);
                 }
             } catch (err) {
-                setResult(`❌ Error: ${err.message}`);
+                setResult(`❌ ${err.message}`);
             } finally {
                 btn.disabled = false;
             }
