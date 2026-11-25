@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Store Price Scanner</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 15px; background: #f0f2f5; text-align: center; color: #1c1e21; }
+        h2 { margin: 0 0 12px 0; font-size: 22px; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); max-width: 420px; margin: 0 auto 15px auto; }
+        #camera-container { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
+        video { width: 100%; display: block; max-height: 300px; object-fit: cover; }
+        canvas { display: none; }
+        input { width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; border: 1px solid #ccd0d5; border-radius: 8px; margin-bottom: 10px; }
+        button { width: 100%; padding: 14px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; color: white; transition: opacity 0.2s; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-scan { background: #10b981; font-size: 18px; }
+        .btn-add { background: #2563eb; }
+        .btn-key { background: #4b5563; padding: 10px; font-size: 14px; }
+        #result { font-size: 17px; font-weight: 600; min-height: 28px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .price-tag { font-size: 28px; color: #10b981; font-weight: 800; margin-top: 4px; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; text-align: left; }
+        .item-row:last-child { border-bottom: none; }
+        .item-row img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; margin-right: 12px; }
+        .item-desc { font-size: 12px; color: #65676b; display: block; margin-top: 2px; }
+        .btn-del { background: #ef4444; width: auto; padding: 6px 12px; font-size: 12px; }
+        details { text-align: left; font-size: 14px; color: #4b5563; }
+        summary { font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h2>🤖 AI Visual Price Scanner</h2>
+
+    <!-- API Key Setup -->
+    <div class="card">
+        <details id="keyBox">
+            <summary>⚙️ AI Setup (Tap to enter API Key)</summary>
+            <p style="font-size:13px; margin:8px 0;">Paste your free Google AI Studio key below. It stays saved on your phone.</p>
+            <input type="password" id="apiKeyInput" placeholder="AIzaSy...">
+            <button class="btn-key" onclick="saveApiKey()">Save API Key</button>
+        </details>
+    </div>
+
+    <!-- Camera & Scan -->
+    <div class="card">
+        <div id="camera-container">
+            <video id="video" autoplay playsinline></video>
+        </div>
+        <canvas id="canvas"></canvas>
+        
+        <div id="result" style="margin: 15px 0;">Point camera at an item</div>
+        <button id="scanBtn" class="btn-scan" onclick="scanItem()">🔍 Scan & Check Price</button>
+    </div>
+
+    <!-- Add New Item -->
+    <div class="card">
+        <h3 style="margin-top:0; font-size:16px; text-align:left;">Add New Material to AI Memory</h3>
+        <input type="text" id="itemName" placeholder="Material Name (e.g., 1/2 inch PVC Elbow)">
+        <input type="number" id="itemPrice" placeholder="Price (e.g., 25.00)" step="0.01">
+        <button id="addBtn" class="btn-add" onclick="saveItem()">📸 Snap & Teach AI</button>
+    </div>
+
+    <!-- Saved Inventory -->
+    <div class="card">
+        <h3 style="margin-top:0; font-size:16px; text-align:left;">Saved Materials (<span id="count">0</span>)</h3>
+        <div id="items"></div>
+    </div>
+
+    <script>
+        const MODEL = "gemini-3.8-flash";
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let inventory = JSON.parse(localStorage.getItem('aiStoreInventory')) || [];
+        let apiKey = localStorage.getItem('geminiApiKey') || '';
+
+        if (!apiKey) {
+            document.getElementById('keyBox').open = true;
+        } else {
+            document.getElementById('apiKeyInput').value = apiKey;
+        }
+
+        // Start rear camera
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => { video.srcObject = stream; })
+            .catch(() => { setResult("⚠️ Camera blocked. Please allow camera permissions."); });
+
+        function saveApiKey() {
+            const val = document.getElementById('apiKeyInput').value.trim();
+            if (!val) return alert("Please paste a valid API key.");
+            apiKey = val;
+            localStorage.setItem('geminiApiKey', apiKey);
+            document.getElementById('keyBox').open = false;
+            alert("API Key saved!");
+        }
+
+        function setResult(html) {
+            document.getElementById('result').innerHTML = html;
+        }
+
+        function capturePhoto() {
+            const width = 512;
+            const height = (video.videoHeight / video.videoWidth) * width || 512;
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(video, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            const base64 = dataUrl.split(',')[1];
+            
+            // Small thumbnail for list display
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = 80;
+            thumbCanvas.height = 80;
+            thumbCanvas.getContext('2d').drawImage(video, 0, 0, 80, 80);
+            const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.6);
+
+            return { base64, thumbnail };
+        }
+
+        async function callGemini(prompt, base64Image) {
+            if (!apiKey) {
+                document.getElementById('keyBox').open = true;
+                throw new Error("Please enter your Gemini API Key at the top first.");
+            }
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey
+                },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: prompt },
+                            { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+                        ]
+                    }]
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error?.message || "API Error");
+            }
+            return data.candidates[0].content.parts[0].text;
+        }
+
+        async function saveItem() {
+            const name = document.getElementById('itemName').value.trim();
+            const price = document.getElementById('itemPrice').value.trim();
+            if (!name || !price) return alert("Enter both the material name and price.");
+
+            const btn = document.getElementById('addBtn');
+            btn.disabled = true;
+            setResult("⏳ AI is studying this material...");
+
+            try {
+                const { base64, thumbnail } = capturePhoto();
+                const prompt = `You are cataloging a store item named "${name}". Describe its distinct visual appearance (shape, material, color, texture, markings, proportions) in 1 concise sentence so it can be recognized later even in different lighting.`;
+                
+                const description = await callGemini(prompt, base64);
+
+                inventory.push({
+                    id: Date.now(),
+                    name,
+                    price: parseFloat(price).toFixed(2),
+                    description: description.trim(),
+                    thumbnail
+                });
+                localStorage.setItem('aiStoreInventory', JSON.stringify(inventory));
+
+                document.getElementById('itemName').value = '';
+                document.getElementById('itemPrice').value = '';
+                setResult(`✅ Learned: <b>${name}</b> (₱${parseFloat(price).toFixed(2)})`);
+                renderInventory();
+            } catch (err) {
+                setResult(`❌ Error: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function scanItem() {
+            if (inventory.length === 0) return setResult("Inventory is empty! Add a material first.");
+
+            const btn = document.getElementById('scanBtn');
+            btn.disabled = true;
+            setResult("🔍 AI is identifying item...");
+
+            try {
+                const { base64 } = capturePhoto();
+                const catalog = inventory.map(i => `ID: ${i.id} | Name: ${i.name} | Price: ${i.price} | Visuals: ${i.description}`).join('\n');
+                
+                const prompt = `Look at the main object in this photo and match it to the closest item in this store inventory:\n\n${catalog}\n\nRespond ONLY with valid JSON in this exact format (no markdown, no backticks): {"matchedId": number_or_null, "confidence": "high" | "medium" | "low", "reason": "short 5-word reason"}`;
+
+                const rawReply = await callGemini(prompt, base64);
+                const cleanJson = rawReply.replace(/```json|```/g, '').trim();
+                const match = JSON.parse(cleanJson);
+
+                const found = inventory.find(i => i.id === match.matchedId);
+
+                if (found && match.confidence !== "low") {
+                    setResult(`
+                        <span>${found.name}</span>
+                        <span class="price-tag">₱${found.price}</span>
+                        <span style="font-size:12px; color:#666; font-weight:normal;">(${match.reason})</span>
+                    `);
+                } else {
+                    setResult(`❓ Not recognized.<br><span style="font-size:13px; color:#666; font-weight:normal;">Try getting closer or add it below.</span>`);
+                }
+            } catch (err) {
+                setResult(`❌ Error: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function deleteItem(id) {
+            if (!confirm("Delete this item?")) return;
+            inventory = inventory.filter(item => item.id !== id);
+            localStorage.setItem('aiStoreInventory', JSON.stringify(inventory));
+            renderInventory();
+        }
+
+        function renderInventory() {
+            document.getElementById('count').innerText = inventory.length;
+            document.getElementById('items').innerHTML = inventory.map(item => `
+                <div class="item-row">
+                    <div style="display:flex; align-items:center; padding-right:8px;">
+                        <img src="${item.thumbnail}">
+                        <div>
+                            <b>${item.name}</b> — <span style="color:#10b981; font-weight:bold;">₱${item.price}</span>
+                            <span class="item-desc">${item.description}</span>
+                        </div>
+                    </div>
+                    <button class="btn-del" onclick="deleteItem(${item.id})">✕</button>
+                </div>
+            `).join('');
+        }
+
+        renderInventory();
+    </script>
+</body>
+</html>
